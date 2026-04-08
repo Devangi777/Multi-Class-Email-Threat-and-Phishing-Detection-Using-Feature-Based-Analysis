@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CyberSec Email Gateway</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;700&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-container">
+        <header class="topbar">
+            <div class="branding">
+                <i class="fa-solid fa-shield-halved"></i>
+                <div>
+                    <h1>CipherMail Guard</h1>
+                    <span class="subtitle">Threat Intelligence & Prevention System</span>
+                </div>
+            </div>
+            <div class="system-status">
+                <span class="pulse"></span> System Online - Engine Active
+            </div>
+        </header>
+
+        <main class="dashboard">
+            <!-- LEFT PANEL: INPUT -->
+            <section class="panel input-panel">
+                <div class="panel-header">
+                    <h2><i class="fa-solid fa-satellite-dish"></i> Incoming Payload Stream</h2>
+                </div>
+                <div class="panel-content">
+                    <form id="inspection-form">
+                        <div class="form-group">
+                            <label for="subject">Packet Header (Subject)</label>
+                            <input type="text" id="subject" class="mono-input" placeholder="Enter subject line..." required>
+                        </div>
+                        <div class="form-group">
+                            <label for="body">Payload Body (Content)</label>
+                            <div class="textarea-wrapper">
+                                <textarea id="body" class="mono-input" rows="8" placeholder="Paste incoming transmission..." required></textarea>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="url">Extracted URI (Optional)</label>
+                            <input type="text" id="url" class="mono-input" placeholder="http://suspicious-link.com">
+                        </div>
+                        <button type="submit" class="btn-analyze" id="analyze-btn">
+                            <i class="fa-solid fa-microchip"></i> Execute Deep Packet Inspection
+                        </button>
+                    </form>
+                </div>
+            </section>
+
+            <!-- RIGHT PANEL: RESULTS -->
+            <section class="panel results-panel">
+                <div class="panel-header">
+                    <h2><i class="fa-solid fa-chart-radar"></i> Intelligence Report</h2>
+                </div>
+                
+                <div class="panel-content" id="init-state">
+                    <div class="empty-state">
+                        <i class="fa-solid fa-crosshairs fa-spin-pulse"></i>
+                        <p>Awaiting incoming payload for analysis...</p>
+                    </div>
+                </div>
+
+                <div class="panel-content" id="result-box" style="display: none;">
+                    
+                    <!-- Top metrics row -->
+                    <div class="metrics-grid">
+                        <div class="metric-card" id="card-class">
+                            <div class="metric-icon"><i class="fa-solid fa-tags"></i></div>
+                            <div class="metric-data">
+                                <span>Classification</span>
+                                <strong id="res-class">-</strong>
+                            </div>
+                        </div>
+                        <div class="metric-card" id="card-action">
+                            <div class="metric-icon"><i class="fa-solid fa-gavel"></i></div>
+                            <div class="metric-data">
+                                <span>Recommended Action</span>
+                                <strong id="res-action">-</strong>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Risk Bar -->
+                    <div class="risk-section">
+                        <div class="risk-header">
+                            <span>Threat Level: <strong id="res-risk" style="text-transform:uppercase;">-</strong></span>
+                            <span>Confidence: <strong id="res-conf">0%</strong></span>
+                        </div>
+                        <div class="progress-track">
+                            <div class="progress-bar" id="risk-bar" style="width: 0%;"></div>
+                        </div>
+                    </div>
+
+                    <!-- Threat Analysis / Reasons -->
+                    <div class="analysis-section">
+                        <h3><i class="fa-solid fa-list-check"></i> Anomaly Detection Triggers</h3>
+                        <ul id="res-reasons" class="reason-list">
+                        </ul>
+                    </div>
+                    
+                    <!-- Highlighted Input preview -->
+                    <div class="analysis-section">
+                        <h3><i class="fa-solid fa-magnifying-glass-chart"></i> Payload Extraction Highlight</h3>
+                        <div class="highlight-box" id="highlight-box">
+                        </div>
+                    </div>
+
+                    <div class="system-footer">
+                        <span><i class="fa-solid fa-network-wired"></i> Model: <span id="res-model"></span></span>
+                        <span id="timestamp"></span>
+                    </div>
+
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        document.getElementById('inspection-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const btn = document.getElementById('analyze-btn');
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processing...';
+            btn.disabled = true;
+            
+            const subject = document.getElementById('subject').value;
+            const body = document.getElementById('body').value;
+            const url = document.getElementById('url').value;
+            
+            try {
+                const response = await fetch('/predict', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({subject, body, url})
+                });
+                
+                if(!response.ok) throw new Error("Server Error");
+                const result = await response.json();
+                
+                document.getElementById('init-state').style.display = 'none';
+                document.getElementById('result-box').style.animation = 'fadeIn 0.5s';
+                document.getElementById('result-box').style.display = 'flex';
+                
+                document.getElementById('res-class').innerText = result.class;
+                document.getElementById('res-action').innerText = result.action;
+                document.getElementById('res-risk').innerText = result.risk;
+                document.getElementById('res-conf').innerText = result.confidence + '%';
+                document.getElementById('res-model').innerText = result.model;
+                document.getElementById('timestamp').innerText = new Date().toLocaleTimeString();
+
+                const colorMap = {
+                    'green': 'var(--success)',
+                    'orange': 'var(--warning)',
+                    'red': 'var(--danger)'
+                };
+                const activeColor = colorMap[result.color];
+                
+                document.getElementById('card-class').style.borderColor = activeColor;
+                document.getElementById('card-action').style.borderColor = activeColor;
+                
+                const bar = document.getElementById('risk-bar');
+                bar.style.width = '0%';
+                setTimeout(() => {
+                    bar.style.width = result.risk_score + '%';
+                    bar.style.backgroundColor = activeColor;
+                    bar.style.boxShadow = '0 0 10px ' + activeColor;
+                }, 100);
+
+                const ul = document.getElementById('res-reasons');
+                ul.innerHTML = '';
+                result.reasons.forEach(r => {
+                    ul.innerHTML += `<li><i class="fa-solid fa-triangle-exclamation" style="color:${activeColor}"></i> ${r}</li>`;
+                });
+                
+                let combinedText = `<strong>Subject:</strong> ${escapeHtml(subject)}<br><br><strong>Body:</strong> ${escapeHtml(body)}`;
+                if(result.highlight_words && result.color !== 'green') {
+                    result.highlight_words.forEach(word => {
+                        const regex = new RegExp(`\\b(${word})\\b`, 'gi');
+                        combinedText = combinedText.replace(regex, `<span class="highlight-${result.color}">$1</span>`);
+                    });
+                }
+                document.getElementById('highlight-box').innerHTML = combinedText;
+                
+            } catch(err) {
+                console.error(err);
+                alert("Error connecting to CipherMail Engine. Is Flask running?");
+            } finally {
+                btn.innerHTML = '<i class="fa-solid fa-microchip"></i> Execute Deep Packet Inspection';
+                btn.disabled = false;
+            }
+        });
+        
+        function escapeHtml(unsafe) {
+            return unsafe
+                 .replace(/&/g, "&amp;")
+                 .replace(/</g, "&lt;")
+                 .replace(/>/g, "&gt;")
+                 .replace(/"/g, "&quot;")
+                 .replace(/'/g, "&#039;");
+        }
+    </script>
+</body>
+</html>

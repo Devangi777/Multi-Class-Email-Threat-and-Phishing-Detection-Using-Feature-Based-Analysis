@@ -109,7 +109,7 @@ class EmailThreatDetector:
         self.model = best_clf
         self.model_name = best_name
 
-    def predict(self, subject, body, url, sender="", link_count=0):
+    def predict(self, subject, body, url, sender="", link_count=0, dkim_signed_by=""):
         text, feats = self.extract_features(subject, body, url, sender, int(link_count) if link_count else 0)
         X_vec = self.vectorizer.transform([text]).toarray()
         X_num = np.array([list(feats.values())])
@@ -138,6 +138,30 @@ class EmailThreatDetector:
         if feats['suspicious_count'] >= 2 and feats['url_length'] > 0.0:
             is_phishing = True
             reasons.append("Suspicious credential/login keywords found alongside embedded links.")
+            
+        # Cryptographic Verification (DKIM)
+        sender_domain = ""
+        if sender and "@" in sender:
+            sender_domain = sender.split("@")[-1].strip("<>")
+            
+        if dkim_signed_by:
+            dkim_lower = dkim_signed_by.lower()
+            domain_lower = sender_domain.lower()
+            
+            # Check if one is a subdomain of the other (e.g., bank.com and mail.bank.com)
+            if sender_domain and (dkim_lower in domain_lower or domain_lower in dkim_lower):
+                reasons.append(f"🔒 Cryptographic Identity Verified: DKIM Signed by {dkim_signed_by}")
+                if ml_confidence < 90 and not is_phishing:
+                    final_class = 0 # Push to legitimate
+                    ml_confidence += 5
+            else:
+                # Only forcefully flag as phishing if they claim to be a TRUSTED_DOMAIN but have a fake signature
+                if sender_domain and any(trusted in domain_lower for trusted in TRUSTED_DOMAINS):
+                    is_phishing = True
+                    reasons.append(f"⚠️ HIGH RISK: Spoofed Identity! Claims to be {sender_domain} but signed by {dkim_signed_by}")
+                else:
+                    # Otherwise, it might just be a legitimate third-party mailer (like SendGrid or MailChimp)
+                    reasons.append(f"ℹ️ DKIM signed by third-party mailer ({dkim_signed_by}) instead of sender ({sender_domain}).")
 
         if is_phishing:
             final_class = 2

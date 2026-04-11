@@ -19,7 +19,12 @@
                 </div>
             </div>
             <div class="system-status">
-                <span class="pulse"></span> System Online - Engine Active
+                <a href="/analytics" class="btn-secondary" style="margin-right: 15px;"><i class="fa-solid fa-chart-pie"></i> Fleet Analytics</a>
+                <a href="/logs" class="btn-secondary" style="margin-right: 15px;"><i class="fa-solid fa-list-ul"></i> Security Logs</a>
+                <span id="jwt-badge" title="Authenticating..." style="margin-right: 15px; font-family: 'Roboto Mono', monospace; font-size: 11px; background: rgba(255,255,255,0.1); padding: 4px 8px; border-radius: 4px; display: none;">
+                    <i class="fa-solid fa-lock" style="color: var(--warning);"></i> No Token
+                </span>
+                <span class="pulse"></span> System Online
             </div>
         </header>
 
@@ -44,6 +49,16 @@
                         <div class="form-group">
                             <label for="url">Extracted URI (Optional)</label>
                             <input type="text" id="url" class="mono-input" placeholder="http://suspicious-link.com">
+                        </div>
+                        <div class="form-group" style="display: flex; gap: 15px;">
+                            <div style="flex: 1;">
+                                <label for="sender">Sender Identity</label>
+                                <input type="text" id="sender" class="mono-input" placeholder="admin@bank.com">
+                            </div>
+                            <div style="flex: 1;">
+                                <label for="dkim">DKIM Signed-By (Optional)</label>
+                                <input type="text" id="dkim" class="mono-input" placeholder="bank.com">
+                            </div>
                         </div>
                         <button type="submit" class="btn-analyze" id="analyze-btn">
                             <i class="fa-solid fa-microchip"></i> Execute Deep Packet Inspection
@@ -131,15 +146,47 @@
             const subject = document.getElementById('subject').value;
             const body = document.getElementById('body').value;
             const url = document.getElementById('url').value;
+            const sender = document.getElementById('sender').value;
+            const dkim_signed_by = document.getElementById('dkim').value;
             
             try {
+                // 1. Fetch JWT Token First
+                let jwtTokenStr = "";
+                try {
+                    const authRes = await fetch('/auth', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({api_key: 'aegis-extension-key-123'})
+                    });
+                    if (authRes.ok) {
+                        const authData = await authRes.json();
+                        jwtTokenStr = authData.access_token;
+                        
+                        // Update UI Badge
+                        const badge = document.getElementById('jwt-badge');
+                        badge.style.display = 'inline-block';
+                        badge.title = jwtTokenStr;
+                        badge.innerHTML = `<i class="fa-solid fa-lock" style="color: var(--success);"></i> JWT Authenticated`;
+                    } else {
+                        throw new Error("Failed to get token");
+                    }
+                } catch(e) {
+                    console.error(e);
+                    alert("Cryptographic JWT Authentication Failed.");
+                    throw e;
+                }
+
+                // 2. Execute Predict Request with JWT Header
                 const response = await fetch('/predict', {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({subject, body, url})
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': 'Bearer ' + jwtTokenStr
+                    },
+                    body: JSON.stringify({subject, body, url, sender, dkim_signed_by})
                 });
                 
-                if(!response.ok) throw new Error("Server Error");
+                if(!response.ok) throw new Error("Server Error: " + response.status);
                 const result = await response.json();
                 
                 document.getElementById('init-state').style.display = 'none';

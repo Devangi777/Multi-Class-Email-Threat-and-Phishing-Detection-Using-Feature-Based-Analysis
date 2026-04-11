@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fleet Analytics - CipherMail Guard</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;700&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Include Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <header class="topbar">
+            <div class="branding">
+                <i class="fa-solid fa-chart-pie"></i>
+                <div>
+                    <h1>Fleet Analytics Center</h1>
+                    <span class="subtitle">Global Threat Intelligence Telemetry</span>
+                </div>
+            </div>
+            <div class="system-status">
+                <a href="/" class="btn-secondary" style="margin-right: 15px;"><i class="fa-solid fa-arrow-left"></i> Back to Gateway</a>
+                <span class="pulse"></span> System Online
+            </div>
+        </header>
+
+        <main class="dashboard" style="display: block;">
+            
+            <!-- Quick Stats Row -->
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; margin-bottom: 1.5rem;">
+                <div class="metric-card" style="justify-content: center; text-align: center; border-left: 4px solid var(--primary);">
+                    <div class="metric-data">
+                        <span>Total Payloads Scanned</span>
+                        <strong id="stat-total" style="font-size: 2rem; color: var(--text-main);">0</strong>
+                    </div>
+                </div>
+                <div class="metric-card" style="justify-content: center; text-align: center; border-left: 4px solid var(--danger);">
+                    <div class="metric-data">
+                        <span>Attacks Neutralized</span>
+                        <strong id="stat-attacks" style="font-size: 2rem; color: var(--danger);">0</strong>
+                    </div>
+                </div>
+                <div class="metric-card" style="justify-content: center; text-align: center; border-left: 4px solid var(--warning);">
+                    <div class="metric-data">
+                        <span>Total Suspicious Links</span>
+                        <strong id="stat-links" style="font-size: 2rem; color: var(--warning);">0</strong>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts Row -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+                <!-- Threat Distribution Donut Chart -->
+                <section class="panel">
+                    <div class="panel-header">
+                        <h2><i class="fa-solid fa-crosshairs"></i> Threat Distribution</h2>
+                    </div>
+                    <div class="panel-content" style="align-items: center; justify-content: center;">
+                        <div style="position: relative; height: 300px; width: 100%;">
+                            <canvas id="threatPieChart"></canvas>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- DKIM Authentication Bar Chart -->
+                <section class="panel">
+                    <div class="panel-header">
+                        <h2><i class="fa-solid fa-fingerprint"></i> Cryptographic Signatures (DKIM)</h2>
+                    </div>
+                    <div class="panel-content" style="align-items: center; justify-content: center;">
+                        <div style="position: relative; height: 300px; width: 100%;">
+                            <canvas id="dkimBarChart"></canvas>
+                        </div>
+                    </div>
+                </section>
+            </div>
+            
+        </main>
+    </div>
+
+    <script>
+        // Set Chart.js Defaults for Dark Mode
+        Chart.defaults.color = '#a1a1aa';
+        Chart.defaults.font.family = "'Inter', sans-serif";
+
+        async function loadAnalytics() {
+            try {
+                const response = await fetch('/api/logs');
+                const logs = await response.json();
+                
+                // Aggregators
+                let total = logs.length;
+                let attacks = 0;
+                let totalLinks = 0;
+                
+                let classes = { 'Legitimate': 0, 'Spam': 0, 'Phishing': 0 };
+                let dkimStatus = { 'Signed': 0, 'Unsigned': 0 };
+
+                logs.forEach(log => {
+                    const cls = log.predicted_class || 'Legitimate';
+                    if (classes[cls] !== undefined) classes[cls]++;
+                    
+                    if (cls === 'Phishing' || cls === 'Spam') attacks++;
+                    totalLinks += parseInt(log.link_count || 0);
+
+                    if (log.dkim_signed_by && log.dkim_signed_by.trim() !== '') {
+                        dkimStatus['Signed']++;
+                    } else {
+                        dkimStatus['Unsigned']++;
+                    }
+                });
+
+                // Update Quick Stats
+                document.getElementById('stat-total').innerText = total;
+                document.getElementById('stat-attacks').innerText = attacks;
+                document.getElementById('stat-links').innerText = totalLinks;
+
+                // Render Threat Pie Chart
+                const ctxPie = document.getElementById('threatPieChart').getContext('2d');
+                new Chart(ctxPie, {
+                    type: 'doughnut',
+                    data: {
+                        labels: ['Legitimate', 'Spam', 'Phishing'],
+                        datasets: [{
+                            data: [classes['Legitimate'], classes['Spam'], classes['Phishing']],
+                            backgroundColor: ['#10b981', '#f59e0b', '#ef4444'],
+                            borderWidth: 0,
+                            hoverOffset: 4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { position: 'bottom' }
+                        }
+                    }
+                });
+
+                // Render DKIM Bar Chart
+                const ctxBar = document.getElementById('dkimBarChart').getContext('2d');
+                new Chart(ctxBar, {
+                    type: 'bar',
+                    data: {
+                        labels: ['Cryptographically Signed', 'Unsigned / Spoofed'],
+                        datasets: [{
+                            label: 'Volume',
+                            data: [dkimStatus['Signed'], dkimStatus['Unsigned']],
+                            backgroundColor: ['#3b82f6', '#ef4444'],
+                            borderRadius: 4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                grid: { color: '#27272a' }
+                            },
+                            x: {
+                                grid: { display: false }
+                            }
+                        }
+                    }
+                });
+
+            } catch(e) {
+                console.error("Error generating analytics:", e);
+                alert("Failed to load analytics telemetry.");
+            }
+        }
+
+        loadAnalytics();
+    </script>
+</body>
+</html>

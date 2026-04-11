@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Privacy Logs - CipherMail Guard</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;700&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-container">
+        <header class="topbar">
+            <div class="branding">
+                <i class="fa-solid fa-user-shield"></i>
+                <div>
+                    <h1>CipherMail Log Audit</h1>
+                    <span class="subtitle">GDPR Compliant Threat Dataset</span>
+                </div>
+            </div>
+            <div class="system-status">
+                <a href="/analytics" class="btn-secondary" style="margin-right: 15px;"><i class="fa-solid fa-chart-pie"></i> Fleet Analytics</a>
+                <a href="/" class="btn-secondary" style="margin-right: 15px;"><i class="fa-solid fa-arrow-left"></i> Back to Gateway</a>
+                <span class="pulse"></span> System Online
+            </div>
+        </header>
+
+        <main class="dashboard" style="display: block;">
+            <section class="panel" style="width: 100%;">
+                <div class="panel-header" style="justify-content: space-between;">
+                    <h2><i class="fa-solid fa-database"></i> Anonymized Traffic Logs</h2>
+                    <span style="font-family: 'Roboto Mono', monospace; font-size: 12px; color: var(--success);"><i class="fa-solid fa-lock"></i> AES/SHA-256 Enabled</span>
+                </div>
+                <div class="panel-content">
+                    <p style="margin-bottom: 20px; color: var(--text-muted); font-size: 14px;">This table demonstrates GDPR compliance. Raw sender identities are never stored. Instead, they are replaced with a cryptographic SHA-256 hash at the edge.</p>
+                    
+                    <div style="overflow-x: auto;">
+                        <table class="crypto-table">
+                            <thead>
+                                <tr>
+                                    <th>Subject</th>
+                                    <th>Body Snippet</th>
+                                    <th>Sender Identity (Hashed)</th>
+                                    <th>Linked URL</th>
+                                    <th>Links</th>
+                                    <th>DKIM Cert</th>
+                                    <th>Classification</th>
+                                </tr>
+                            </thead>
+                            <tbody id="logs-body">
+                                <tr><td colspan="5" style="text-align: center;"><i class="fa-solid fa-spinner fa-spin"></i> Loading secure logs...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script>
+        async function fetchLogs() {
+            try {
+                const response = await fetch('/api/logs');
+                if (!response.ok) throw new Error("Failed to fetch logs");
+                const logs = await response.json();
+                
+                const tbody = document.getElementById('logs-body');
+                tbody.innerHTML = '';
+                
+                if (logs.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">No intercepted traffic logs found yet. Run an analysis first!</td></tr>';
+                    return;
+                }
+                
+                logs.reverse().forEach(log => {
+                    // Safe parsing
+                    const subject = escapeHtml(log.subject || 'N/A').substring(0, 30) + (log.subject && log.subject.length > 30 ? '...' : '');
+                    const bodySnippet = escapeHtml(log.body || 'N/A').substring(0, 40) + (log.body && log.body.length > 40 ? '...' : '');
+                    const hash = log.sender_hash ? log.sender_hash.substring(0, 16) + '...' : 'UNKNOWN_IDENTITY';
+                    const url = escapeHtml(log.url || 'None');
+                    const links = log.link_count || '0';
+                    const dkim = log.dkim_signed_by ? escapeHtml(log.dkim_signed_by) : '<span style="color:var(--text-muted)">Unsigned</span>';
+                    
+                    let bgClass = "bg-green";
+                    let label = log.predicted_class;
+                    if(label === "Spam") bgClass = "bg-orange";
+                    if(label === "Phishing") bgClass = "bg-red";
+
+                    tbody.innerHTML += `
+                        <tr>
+                            <td title="${escapeHtml(log.subject || '')}">${subject}</td>
+                            <td class="td-url" title="${escapeHtml(log.body || '')}">${bodySnippet}</td>
+                            <td class="td-hash" title="${escapeHtml(log.sender_hash || '')}">${hash}</td>
+                            <td class="td-url" title="${url}">${url}</td>
+                            <td>${links}</td>
+                            <td>${dkim}</td>
+                            <td><span class="badge ${bgClass}">${label}</span></td>
+                        </tr>
+                    `;
+                });
+            } catch(err) {
+                console.error(err);
+                document.getElementById('logs-body').innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--danger);">Error loading logs.</td></tr>`;
+            }
+        }
+        
+        function escapeHtml(unsafe) {
+            return String(unsafe).replace(/[&<"']/g, function(m) {
+                switch (m) {
+                    case '&': return '&amp;';
+                    case '<': return '&lt;';
+                    case '"': return '&quot;';
+                    case "'": return '&#039;';
+                }
+            });
+        }
+        
+        fetchLogs();
+    </script>
+</body>
+</html>

@@ -1,4 +1,5 @@
 let currentEmailId = null;
+let currentDkim = null;
 
 function extractEmailData() {
     const subjectEl = document.querySelector('h2[data-thread-perm-id]');
@@ -17,8 +18,20 @@ function extractEmailData() {
     const link_count = allLinks ? allLinks.length : 0;
 
     const threadId = subjectEl.getAttribute('data-thread-perm-id');
+    
+    // Simulated DKIM check: attempt to find "signed-by: domain.com" text 
+    // somewhere in the rendered email metadata if the user expanded headers.
+    let dkim_signed_by = "";
+    try {
+        const dkimMatch = document.body.textContent.match(/signed-by:\s*([a-zA-Z0-9.-]+)/i);
+        if (dkimMatch && dkimMatch[1]) {
+            dkim_signed_by = dkimMatch[1];
+        }
+    } catch (e) {
+        console.log("Aegis DKIM match error", e);
+    }
 
-    return { subject, body, url, sender, link_count, threadId };
+    return { subject, body, url, sender, link_count, dkim_signed_by, threadId };
 }
 
 function injectUI() {
@@ -108,8 +121,9 @@ function updateUI(data) {
 function analyzeCurrentEmail() {
     const payload = extractEmailData();
     
-    if (payload && payload.threadId !== currentEmailId) {
+    if (payload && (payload.threadId !== currentEmailId || (payload.dkim_signed_by && !currentDkim))) {
         currentEmailId = payload.threadId;
+        currentDkim = payload.dkim_signed_by;
         
         const panel = document.getElementById('aegis-security-panel');
         if (panel) panel.style.display = 'flex';
